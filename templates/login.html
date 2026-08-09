@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container min-vh-100 d-flex align-items-center justify-content-center">
+
+    <div class="col-12 col-sm-10 col-md-6 col-lg-4">
+
+        <div class="card shadow-sm border-0 rounded-4">
+
+            <div class="card-body p-4 p-md-5">
+
+                <div class="text-center mb-4">
+                    <h2 class="fw-bold mb-2">Welcome Back</h2>
+                    <p class="text-muted small mb-0">
+                        Log in to access your portfolio dashboard
+                    </p>
+                </div>
+                
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            {% if category == "login_error" or category == "success" %}
+                                <div class="alert alert-{{ 'danger' if category == 'login_error' else category }} alert-dismissible fade show">
+
+                                    {{ message }}
+
+                                    <button type="button"
+                                            class="btn-close"
+                                            data-bs-dismiss="alert">
+                                    </button>
+
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST" action="/login">
+
+                    <div class="mb-3">
+                        <label class="form-label">Company Name</label>
+                        <input type="text"
+                            name="organization_name"
+                            class="form-control"
+                            placeholder="Enter your company name"
+                            required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text"
+                               name="username"
+                               class="form-control form-control-lg"
+                               placeholder="Enter your username"
+                               required>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">Password</label>
+                        <input type="password"
+                               name="password"
+                               class="form-control form-control-lg"
+                               placeholder="Enter your password"
+                               required>
+                    </div>
+
+                    <button type="submit"
+                            class="btn btn-primary btn-lg w-100">
+                        Log In
+                    </button>
+
+                </form>
+
+                <div class="text-center mt-4">
+                    <p class="small text-muted mb-0">
+                        Don’t have an account?
+                        <span class="text-muted fw-semibold"
+                              aria-disabled="true"
+                              title="Registration is temporarily unavailable">
+                            Register here
+                        </span>
+                        <br>
+                        Registration is temporarily unavailable.
+                    </p>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="/forgot-password" class="text-decoration-none small">
+                        Forgot password?
+                    </a>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

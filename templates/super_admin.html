@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bayantech Super Admin - Portfolio Analyst Pro</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background:#f4f7fb; color:#142033; }
+        .topbar { background:#071827; color:#fff; }
+        .card { border:1px solid #dfe6ee; border-radius:14px; box-shadow:0 6px 18px rgba(7,24,39,.06); }
+        .kicker { letter-spacing:.12em; text-transform:uppercase; color:#9ddcff; font-size:.78rem; font-weight:700; }
+    </style>
+</head>
+<body>
+    <div class="topbar px-4 py-3 d-flex justify-content-between align-items-center">
+        <div>
+            <div class="kicker">Bayantech Platform</div>
+            <h3 class="m-0">Portfolio Analyst Pro - Super Admin</h3>
+            <div class="text-white-50 small">Manage demo dashboard, client companies and platform access.</div>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/" class="btn btn-outline-light btn-sm">Public demo</a>
+            <a href="/super-admin/logout" class="btn btn-outline-light btn-sm">Logout</a>
+        </div>
+    </div>
+
+    <div class="container-fluid p-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="row g-4">
+            <div class="col-lg-4">
+                <div class="card p-3 mb-4">
+                    <h5>Public demo dashboard</h5>
+                    <p class="text-muted small mb-2">The public landing dashboard uses the demo company below. Use the existing Admin Panel to upload sample tickers, set triggers and manage demo alert recipients.</p>
+                    <div class="border rounded p-2 bg-light mb-3">
+                        <strong>{{ demo_company.name }}</strong><br>
+                        <span class="small text-muted">Company ID: {{ demo_company.id }} · Status: {{ demo_company.status }}</span>
+                    </div>
+                    <a href="/super-admin/demo-admin" class="btn btn-primary w-100">Manage demo dashboard</a>
+                </div>
+
+                <div class="card p-3">
+                    <h5>Create client company</h5>
+                    <p class="text-muted small">Use this for manual onboarding before Stripe is added. The company admin can log in and manage their own portfolio setup.</p>
+                    <form method="POST" action="/super-admin/create-company">
+                        <div class="mb-2">
+                            <label class="form-label small">Company name</label>
+                            <input name="company_name" class="form-control" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">Admin username</label>
+                            <input name="admin_username" class="form-control" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">Admin email</label>
+                            <input type="email" name="admin_email" class="form-control">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small">Temporary admin password</label>
+                            <input type="password" name="admin_password" class="form-control" required>
+                        </div>
+                        <button class="btn btn-success w-100">Create company and admin</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="col-lg-8">
+                <div class="card p-3 mb-4">
+                    <h5>Companies</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Status</th>
+                                    <th>Subscription</th>
+                                    <th>Demo?</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for c in companies %}
+                                <tr>
+                                    <td>{{ c.name }}</td>
+                                    <td><span class="badge bg-secondary">{{ c.status }}</span></td>
+                                    <td><span class="badge bg-info text-dark">{{ c.subscription_status }}</span></td>
+                                    <td>{% if c.is_demo %}<span class="badge bg-primary">Demo</span>{% else %}-{% endif %}</td>
+                                    <td>
+                                        <a class="btn btn-outline-primary btn-sm" href="/super-admin/company/{{ c.id }}/login-as-admin">Open as admin</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card p-3">
+                    <h5>Recent users</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Company</th>
+                                    <th>Active</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for u in users %}
+                                <tr>
+                                    <td>{{ u.username }}</td>
+                                    <td>{{ u.email or '-' }}</td>
+                                    <td>{{ u.role }}</td>
+                                    <td>{{ u.company.name if u.company else '-' }}</td>
+                                    <td>{% if u.is_active %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-danger">No</span>{% endif %}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

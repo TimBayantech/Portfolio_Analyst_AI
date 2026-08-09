@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="admin-shell">
+<div class="container py-4">
+
+    <!-- Header -->
+    <div class="admin-hero mb-4">
+
+        <div class="admin-hero-grid pe-5">
+
+            <div class="admin-hero-main">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+
+                    <div>
+                        <span class="admin-kicker">
+                            Workspace Control Centre
+                        </span>
+
+                        <h1 class="mb-0 mt-2">Admin Panel</h1>
+                    </div>
+
+                    <a href="/dashboard" class="admin-back-btn">
+                        ← Dashboard
+                    </a>
+
+                </div>
+
+                <p>
+                    Manage users, uploads, targets and alert notifications
+                    from one place.
+                </p>
+            </div>
+
+            <div class="admin-hero-stat">
+                <span>Total Users</span>
+                <strong>{{ users|length }}</strong>
+            </div>
+
+            <div class="admin-hero-stat">
+                <span>Alert Emails</span>
+                <strong>{{ emails|length }}/5</strong>
+            </div>
+
+            <div class="admin-hero-stat">
+                <span>Targets</span>
+                <strong>{% if settings %}Active{% else %}Not Set{% endif %}</strong>
+            </div>
+
+        </div>        
+
+    </div>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-4">
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm border-0">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <div id="flashContainer"></div>
+
+    
+    <div class="admin-section">
+        <div class="row g-4 align-items-stretch">
+
+            <!-- Left column: Upload + Targets -->
+            <div class="col-lg-3 d-flex flex-column gap-4">
+                
+                <!-- Upload Portfolio -->
+                <div class="admin-panel">
+
+                    <div class="admin-card-header">
+                        <div class="admin-icon">
+                            <i class="bi bi-cloud-arrow-up"></i>
+                        </div>
+                        <div>
+                            <h5>Upload Portfolio</h5>
+                            <p>Upload monthly portfolio file in .xls, .xlsx or .xslm format.</p>
+                        </div>
+                    </div>
+
+                    <form method="POST" action="/admin/upload" enctype="multipart/form-data">
+                        <input type="file"
+                            name="file"
+                            accept=".xls,.xlsx,.xlsm"
+                            required
+                            class="form-control form-control-sm custom-file-input mb-3">
+
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            Upload Portfolio
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Set Targets -->
+                <div class="admin-panel">
+
+                    <div class="admin-card-header">
+                        <div class="admin-icon green">
+                            <i class="bi bi-bullseye"></i>
+                        </div>
+                        <div>
+                            <h5>Default Portfolio Targets</h5>
+                            <p>Set take-profit and stop-loss levels for this company.</p>
+                        </div>
+                    </div>
+
+                    <form method="POST" action="/admin/set_targets">
+                        <div class="row g-3">
+                            <div class="target-list">
+
+                                <div class="target-row">
+                                    <label>TP1 (%)</label>
+                                    <input type="number"
+                                        step="0.01"
+                                        name="tp1"
+                                        value="{{ settings.tp1 if settings else '' }}"
+                                        class="form-control"
+                                        required>
+                                </div>
+
+                                <div class="target-row">
+                                    <label>TP2 (%)</label>
+                                    <input type="number"
+                                        step="0.01"
+                                        name="tp2"
+                                        value="{{ settings.tp2 if settings else '' }}"
+                                        class="form-control"
+                                        required>
+                                </div>
+
+                                <div class="target-row">
+                                    <label>TP3 (%)</label>
+                                    <input type="number"
+                                        step="0.01"
+                                        name="tp3"
+                                        value="{{ settings.tp3 if settings else '' }}"
+                                        class="form-control"
+                                        required>
+                                </div>
+
+                                <div class="target-row">
+                                    <label>Stop Loss (%)</label>
+                                    <input type="number"
+                                        step="0.01"
+                                        name="stop_loss"
+                                        value="{{ settings.stop_loss if settings else '' }}"
+                                        class="form-control"
+                                        required>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-success btn-sm mt-3">
+                            Save Targets
+                        </button>
+                    </form>
+
+                    
+                </div>
+            </div>
+
+            <!-- User Management -->
+            <div class="col-lg-5">
+                <div class="admin-panel h-100">
+
+                    <div class="admin-card-header mb-3">
+                        <div class="admin-icon orange">
+                            <i class="bi bi-people"></i>
+                        </div>
+                        <div>
+                            <h5>User Management</h5>
+                            <p>Add up to 5 users for this company. Only one admin is allowed.</p>
+                        </div>
+                    </div>
+
+                    {% set viewer_count = users | selectattr("role", "equalto", "viewer") | list | length %}
+
+                    {% if viewer_count < 5 %}
+                    <form method="POST" action="/admin/create-user" class="user-management-form">
+                        <div class="row g-3 align-items-end">
+
+                            <div class="col-md-3">
+                                <label class="form-label small fw-semibold">Username</label>
+                                <input type="text"
+                                        name="username"
+                                        class="form-control"
+                                        required>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label small fw-semibold">Email</label>
+                                <input type="email"
+                                        name="email"
+                                        class="form-control"
+                                        required>
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label small fw-semibold">Password</label>
+                                <input type="password"
+                                        name="password"
+                                        class="form-control"
+                                        required>
+                            </div>
+
+                            <div class="col-md-2">
+                                <label class="form-label small fw-semibold">Role</label>
+                                <select name="role" class="form-select">
+                                    <option value="viewer">Viewer</option>
+
+                                    {% if not existing_admin %}
+                                        <option value="admin">Admin</option>
+                                    {% endif %}
+                                </select>
+                            </div>
+
+                            <div class="mt-3">
+                                <button type="submit" class="btn btn-primary btn-sm">
+                                    Add User
+                                </button>
+                            </div>
+
+                            <hr class="admin-divider">
+
+                        </div>
+                    </form>
+                    {% else %}
+
+                    <div class="alert alert-warning py-2">
+                        Maximum of 5 users reached.
+                    </div>
+
+                    {% endif %}
+
+                    <div class="mt-4 table-responsive user-table-wrapper">
+                        <table class="table align-middle mb-0 user-table">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th class="text-center">Role</th>
+                                    <th class="text-center">Action</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {% for u in users %}
+                                <tr>
+                                    <td class="fw-semibold">{{ u.username }}</td>
+                                    <td class="small text-muted">{{ u.email }}</td>
+
+                                    <td class="text-center">
+                                        {% if u.role == "admin" %}
+                                            <span class="user-role-text admin">Admin</span>
+                                        {% else %}
+                                            <span class="user-role-text viewer">Viewer</span>
+                                        {% endif %}
+                                    </td>
+
+                                    <td class="text-center">
+                                        {% if u.id != session["user_id"] %}
+                                            <form method="POST"
+                                                    action="/admin/delete-user/{{ u.id }}"
+                                                    class="d-inline"
+                                                    onsubmit="return confirm('Delete this user?');">
+
+                                                <button type="submit"
+                                                        class="btn btn-outline-danger btn-sm">
+                                                    Delete
+                                                </button>
+
+                                            </form>
+                                        {% else %}
+                                            <span class="text-muted small">Current user</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        
+    
+            <!-- Alert Emails + Test Email -->
+            <div class="col-lg-4">
+                <div class="admin-panel h-100">
+
+                    <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+                        <div class="admin-card-header">
+                            <div class="admin-icon purple">
+                                <i class="bi bi-envelope-paper"></i>
+                            </div>
+                            <div>
+                                <h5>Alert Emails</h5>
+                                <p>Add up to 5 recipients for portfolio alerts.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% set email_list = emails + [None] * (5 - emails|length) %}
+
+                    <div class="d-flex flex-column gap-2">
+
+                        {% for i in range(5) %}
+
+                            {% if email_list[i] %}
+
+                                <form method="POST"
+                                    action="/admin/delete_email/{{ email_list[i].id }}"
+                                    onsubmit="return confirm('Delete this email?');">
+
+                                    <div class="input-group">
+                                        <input type="email"
+                                            class="form-control form-control-sm alert-email-input"
+                                            value="{{ email_list[i].email }}"
+                                            readonly>
+
+                                        <button type="submit"
+                                                class="btn btn-outline-danger btn-sm">
+                                            Delete
+                                        </button>
+                                    </div>
+
+                                </form>
+
+                            {% else %}
+
+                                <form id="emailForm_{{ i }}"
+                                    method="POST"
+                                    action="/admin/add_emails">
+
+                                    <div class="input-group">
+                                        <input type="email"
+                                            class="form-control form-control-sm alert-email-input"
+                                            id="email_{{ i }}"
+                                            name="email_{{ i }}"
+                                            placeholder="email@example.com">
+
+                                        <button type="submit"
+                                                class="btn btn-primary btn-sm">
+                                            Save
+                                        </button>
+                                    </div>
+
+                                </form>
+
+                            {% endif %}
+
+                        {% endfor %}
+
+                    </div>
+
+                    <form method="POST" action="/admin/test-email" class="mt-3">
+                        <button type="submit" class="btn btn-outline-primary btn-sm">
+                            Send Test Email
+                        </button>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+</div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,90 @@
+<!-- CONTRIBUTORS -->
+<div class="row mt-3">
+
+    <!-- 🔝 TOP CONTRIBUTORS -->
+    <div class="col-md-6">
+        <div class="card shadow-sm p-3 h-100">
+            <h6 class="mb-2 text-center text-success">
+                Top Contributors
+            </h6>
+
+            {% if top_contrib %}
+                {% for t in top_contrib %}
+                <div class="py-1 {% if not loop.last %}border-bottom{% endif %}"
+                     style="line-height: 1.2;">
+
+                    <!-- Line 1 -->
+                    <div class="d-flex justify-content-between small">
+                        <strong>{{ t.ticker }}</strong>
+
+                        <span class="fw-bold text-success">
+                            {{ t.contribution_pct }}%
+                        </span>
+                    </div>
+
+                    <!-- Line 2 -->
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>
+                            ↗ {{ t.return_pct }}%
+                        </span>
+
+                        <span>
+                            Share: {{ t.share_of_portfolio }}%
+                        </span>
+                    </div>
+
+                </div>
+                {% endfor %}
+
+            {% else %}
+                <div class="text-muted text-center small py-3">
+                    No contributors yet (market hasn’t moved)
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 🔻 BOTTOM CONTRIBUTORS -->
+    <div class="col-md-6">
+        <div class="card shadow-sm p-3 h-100">
+            <h6 class="mb-2 text-center text-danger">
+                Bottom Contributors
+            </h6>
+
+            {% if bottom_contrib %}
+                {% for t in bottom_contrib %}
+                <div class="py-1 {% if not loop.last %}border-bottom{% endif %}"
+                     style="line-height: 1.2;">
+
+                    <!-- Line 1 -->
+                    <div class="d-flex justify-content-between small">
+                        <strong>{{ t.ticker }}</strong>
+
+                        <span class="fw-bold text-danger">
+                            {{ t.contribution_pct }}%
+                        </span>
+                    </div>
+
+                    <!-- Line 2 -->
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>
+                            ↘ {{ t.return_pct }}%
+                        </span>
+
+                        <span>
+                            Share: {{ t.share_of_portfolio | abs }}%
+                        </span>
+                    </div>
+
+                </div>
+                {% endfor %}
+
+            {% else %}
+                <div class="text-muted text-center small py-3">
+                    No contributors yet (market hasn’t moved)
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
