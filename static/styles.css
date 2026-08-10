@@ -620,3 +620,7 @@ input[type="file"] {
 .alert-email-input {
     font-size: 0.82rem !important;
 }
+
+.holding-table { font-size: 0.86rem; }
+.holding-table thead th { color: #475569; font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.holding-action-row td { background: #f8fafc; border-top: 0; padding: 16px; }

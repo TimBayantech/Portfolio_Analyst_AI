@@ -132,6 +132,21 @@ class PortfolioTicker(db.Model):
         nullable=True
     )  # None until sold
 
+    sale_price = db.Column(db.Float, nullable=True)
+    quantity = db.Column(db.Float, nullable=True)
+    company_name = db.Column(db.String(120), nullable=True)
+    notes = db.Column(db.String(500), nullable=True)
+
+    @property
+    def is_active(self):
+        return self.date_sold is None
+
+    @property
+    def realised_return_pct(self):
+        if self.sale_price is None or not self.buy_price:
+            return None
+        return round(((self.sale_price / self.buy_price) - 1) * 100, 2)
+
 # ----- Portfolio Settings -----
 class PortfolioSettings(db.Model):
     __tablename__ = "portfolio_settings"

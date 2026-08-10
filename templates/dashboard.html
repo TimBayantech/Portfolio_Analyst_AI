@@ -3,9 +3,9 @@
 <head>
     <title>
         {% if current_org %}
-            {{ current_org.name }} - Portfolio Dashboard
+            {{ current_org.name }} - Portfolio Analyst AI
         {% else %}
-            Portfolio Dashboard
+            Portfolio Analyst AI
         {% endif %}
     </title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -20,9 +20,9 @@
     <div class="d-flex flex-column">
         <h1 class="dashboard-title m-0">
             {% if current_org %}
-                {{ current_org.name }} - Portfolio Dashboard
+                {{ current_org.name }} - Portfolio Analyst AI
             {% else %}
-                Portfolio Dashboard
+                Portfolio Analyst AI
             {% endif %}
         </h1>
 
@@ -93,8 +93,8 @@
             <div id="chart-container" class="card shadow-sm p-3 mb-2 pb-4">
                 {% if message %}
                     <div class="text-muted text-center py-5">
-                        <h5>New portfolio month detected</h5>
-                        <p class="small">Awaiting allocation from wealth manager for {{ current_month }}.</p>
+                        <h5>Rolling portfolio is empty</h5>
+                        <p class="small">An administrator can add the first holding from the Admin Panel.</p>
                     </div>
 
                 {% elif chart_html %}
@@ -155,6 +155,37 @@
                     Portfolio targets not set
                 </div>
             {% endif %}
+
+            <!-- ===================== AI PORTFOLIO SUMMARY ===================== -->
+            <div id="ai-summary-card" class="card shadow-sm p-3 mt-3">
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
+                    <div>
+                        <h5 class="mb-1">AI Portfolio Summary</h5>
+                        <p class="text-muted small mb-0">
+                            Draft portfolio oversight commentary for adviser or investment-team review.
+                        </p>
+                    </div>
+
+                    <button id="generateAiSummaryBtn" class="btn btn-outline-primary btn-sm" type="button">
+                        Generate AI Summary
+                    </button>
+                </div>
+
+                <div class="alert alert-warning small mt-3 mb-3" role="alert">
+                    <strong>Important:</strong>
+                    AI summaries are for management information and adviser review support only.
+                    They are not regulated investment advice, personal recommendations or trade instructions.
+                    All outputs must be reviewed by an authorised adviser or investment professional before use.
+                </div>
+
+                <div id="ai-summary-output" class="border rounded bg-light p-3 small">
+                    <p class="text-muted mb-0">
+                        Click <strong>Generate AI Summary</strong> to create a draft overview covering portfolio movement,
+                        trigger events, concentration risks, client-book implications and suggested review actions.
+                    </p>
+                </div>
+            </div>
+
 
             <!-- Bloomberg TV Card (collapsible) -->
             <!-- Right: Button to toggle Bloomberg TV (YouTube) -->
@@ -281,6 +312,46 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error refreshing chart:', err);
         }
     }
+
+    // ---------- Mock AI Portfolio Summary ----------
+    const generateAiSummaryBtn = document.getElementById('generateAiSummaryBtn');
+    const aiSummaryOutput = document.getElementById('ai-summary-output');
+
+    if (generateAiSummaryBtn && aiSummaryOutput) {
+        generateAiSummaryBtn.addEventListener('click', () => {
+            aiSummaryOutput.innerHTML = `
+                <h6 class="mb-2">Draft AI Portfolio Summary</h6>
+
+                <p><strong>Portfolio overview:</strong>
+                The portfolio dashboard shows the current month-to-date movement, active holdings and latest review position.
+                This summary is a draft management-information view based on currently available dashboard data.</p>
+
+                <p><strong>Key movements:</strong>
+                Review the top and bottom contributors for securities that have had the greatest impact on portfolio movement.
+                Particular attention should be given to holdings with material positive or negative movement from purchase price.</p>
+
+                <p><strong>Trigger events:</strong>
+                Where target-profit or stop-loss thresholds have been crossed, the relevant positions should be reviewed and the adviser or investment team should document the rationale for any next steps.</p>
+
+                <p><strong>Concentration risks:</strong>
+                Consider whether exposure is concentrated in a particular stock, market index, sector, currency or investment theme.
+                Concentration should be reviewed against the client mandate and risk profile where available.</p>
+
+                <p><strong>Suggested adviser review actions:</strong></p>
+                <ul class="mb-2">
+                    <li>Review holdings that have crossed trigger thresholds.</li>
+                    <li>Check whether current exposure remains aligned with the client mandate.</li>
+                    <li>Document the rationale for continued holding, rebalancing or further review.</li>
+                    <li>Check stale, missing or incomplete price data before relying on the summary.</li>
+                </ul>
+
+                <p class="text-muted mb-0"><strong>Data-quality warning:</strong>
+                This is placeholder AI commentary for the first Portfolio Analyst AI demo version.
+                It should be replaced by a server-side AI summary generated from structured portfolio data.</p>
+            `;
+        });
+    }
+
 
     // ---------- Bloomberg TV Persistent Playback ----------
     const collapseEl = document.getElementById('bloombergTV');

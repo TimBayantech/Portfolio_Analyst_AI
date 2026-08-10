@@ -28,7 +28,7 @@
                 </div>
 
                 <p>
-                    Manage users, uploads, targets and alert notifications
+                    Manage users, rolling holdings, targets and alert notifications
                     from one place.
                 </p>
             </div>
@@ -72,32 +72,33 @@
     <div class="admin-section">
         <div class="row g-4 align-items-stretch">
 
-            <!-- Left column: Upload + Targets -->
+            <!-- Left column: Holdings + Targets -->
             <div class="col-lg-3 d-flex flex-column gap-4">
                 
-                <!-- Upload Portfolio -->
+                <!-- Add Holding -->
                 <div class="admin-panel">
 
                     <div class="admin-card-header">
                         <div class="admin-icon">
-                            <i class="bi bi-cloud-arrow-up"></i>
+                            <i class="bi bi-plus-circle"></i>
                         </div>
                         <div>
-                            <h5>Upload Portfolio</h5>
-                            <p>Upload monthly portfolio file in .xls, .xlsx or .xslm format.</p>
+                            <h5>Add Holding</h5>
+                            <p>Add a position to the rolling portfolio. It remains active until sold.</p>
                         </div>
                     </div>
 
-                    <form method="POST" action="/admin/upload" enctype="multipart/form-data">
-                        <input type="file"
-                            name="file"
-                            accept=".xls,.xlsx,.xlsm"
-                            required
-                            class="form-control form-control-sm custom-file-input mb-3">
-
-                        <button type="submit" class="btn btn-primary btn-sm">
-                            Upload Portfolio
-                        </button>
+                    <form method="POST" action="/admin/holdings/add">
+                        <div class="row g-2">
+                            <div class="col-5"><label class="form-label small fw-semibold">Ticker</label><input name="ticker" class="form-control form-control-sm text-uppercase" maxlength="10" placeholder="MSFT" required></div>
+                            <div class="col-7"><label class="form-label small fw-semibold">Market/index</label><select name="market_index" class="form-select form-select-sm"><option value="">None</option><option>NASDAQ</option><option>DOW</option><option>S&amp;P500</option><option>FTSE</option><option>DAX</option><option>NIKKEI</option></select></div>
+                            <div class="col-12"><label class="form-label small fw-semibold">Company name (optional)</label><input name="company_name" class="form-control form-control-sm" maxlength="120"></div>
+                            <div class="col-6"><label class="form-label small fw-semibold">Bought at</label><input type="number" name="buy_price" class="form-control form-control-sm" min="0.000001" step="any" required></div>
+                            <div class="col-6"><label class="form-label small fw-semibold">Purchase date</label><input type="date" name="date_bought" class="form-control form-control-sm" required></div>
+                            <div class="col-12"><label class="form-label small fw-semibold">Number of shares (optional)</label><input type="number" name="quantity" class="form-control form-control-sm" min="0.000001" step="any"></div>
+                            <div class="col-12"><label class="form-label small fw-semibold">Notes (optional)</label><textarea name="notes" class="form-control form-control-sm" maxlength="500" rows="2"></textarea></div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm mt-3">Add to Portfolio</button>
                     </form>
                 </div>
 
@@ -371,6 +372,72 @@
 
                 </div>
             </div>
+        </div>
+
+        <div class="admin-panel mt-4">
+            <div class="admin-card-header mb-3">
+                <div class="admin-icon green"><i class="bi bi-briefcase"></i></div>
+                <div><h5>Active Portfolio</h5><p>Edit purchase details, record a sale, or delete an entry added by mistake.</p></div>
+            </div>
+            {% if tickers %}
+            <div class="table-responsive">
+                <table class="table align-middle holding-table">
+                    <thead><tr><th>Holding</th><th>Purchased</th><th>Quantity</th><th>Market</th><th>Actions</th></tr></thead>
+                    <tbody>
+                    {% for t in tickers %}
+                    <tr>
+                        <td><strong>{{ t.ticker }}</strong>{% if t.company_name %}<div class="small text-muted">{{ t.company_name }}</div>{% endif %}</td>
+                        <td>{{ t.date_bought.strftime('%d %b %Y') }}<div class="small text-muted">at {{ '%.4f'|format(t.buy_price) }}</div></td>
+                        <td>{{ ('%g'|format(t.quantity)) if t.quantity else '—' }}</td>
+                        <td>{{ t.market_index or '—' }}</td>
+                        <td><div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-outline-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#edit-{{ t.id }}">Edit</button>
+                            <button class="btn btn-outline-success btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#sell-{{ t.id }}">Sell</button>
+                            <form method="POST" action="/admin/holdings/{{ t.id }}/delete" onsubmit="return confirm('Permanently delete this erroneous entry?');"><button class="btn btn-outline-danger btn-sm">Delete error</button></form>
+                        </div></td>
+                    </tr>
+                    <tr class="collapse holding-action-row" id="edit-{{ t.id }}"><td colspan="5">
+                        <form method="POST" action="/admin/holdings/{{ t.id }}/edit" class="row g-2 align-items-end">
+                            <div class="col-md-2"><label class="form-label small">Company</label><input name="company_name" value="{{ t.company_name or '' }}" maxlength="120" class="form-control form-control-sm"></div>
+                            <div class="col-md-2"><label class="form-label small">Bought at</label><input type="number" step="any" min="0.000001" name="buy_price" value="{{ t.buy_price }}" required class="form-control form-control-sm"></div>
+                            <div class="col-md-2"><label class="form-label small">Date</label><input type="date" name="date_bought" value="{{ t.date_bought.isoformat() }}" required class="form-control form-control-sm"></div>
+                            <div class="col-md-2"><label class="form-label small">Quantity</label><input type="number" step="any" min="0.000001" name="quantity" value="{{ t.quantity or '' }}" class="form-control form-control-sm"></div>
+                            <div class="col-md-2"><label class="form-label small">Market</label><input name="market_index" value="{{ t.market_index or '' }}" maxlength="20" class="form-control form-control-sm text-uppercase"></div>
+                            <div class="col-md-2"><button class="btn btn-primary btn-sm">Save changes</button></div>
+                            <div class="col-12"><label class="form-label small">Notes</label><input name="notes" value="{{ t.notes or '' }}" maxlength="500" class="form-control form-control-sm"></div>
+                        </form>
+                    </td></tr>
+                    <tr class="collapse holding-action-row" id="sell-{{ t.id }}"><td colspan="5">
+                        <form method="POST" action="/admin/holdings/{{ t.id }}/sell" class="row g-2 align-items-end">
+                            <div class="col-md-3"><label class="form-label small">Sale price</label><input type="number" step="any" min="0.000001" name="sale_price" required class="form-control form-control-sm"></div>
+                            <div class="col-md-3"><label class="form-label small">Sale date</label><input type="date" name="date_sold" required class="form-control form-control-sm"></div>
+                            <div class="col-md-3"><button class="btn btn-success btn-sm">Confirm sale</button></div>
+                        </form>
+                    </td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}<p class="text-muted mb-0">No active holdings yet.</p>{% endif %}
+        </div>
+
+        <div class="admin-panel mt-4">
+            <div class="admin-card-header mb-3">
+                <div class="admin-icon orange"><i class="bi bi-clock-history"></i></div>
+                <div><h5>Portfolio History</h5><p>Sold positions remain here for performance and audit history.</p></div>
+            </div>
+            {% if sold_tickers %}
+            <div class="table-responsive"><table class="table align-middle holding-table">
+                <thead><tr><th>Ticker</th><th>Bought</th><th>Sold</th><th>Realised return</th><th></th></tr></thead>
+                <tbody>{% for t in sold_tickers %}<tr>
+                    <td><strong>{{ t.ticker }}</strong>{% if t.company_name %}<div class="small text-muted">{{ t.company_name }}</div>{% endif %}</td>
+                    <td>{{ t.date_bought.strftime('%d %b %Y') }} at {{ '%.4f'|format(t.buy_price) }}</td>
+                    <td>{{ t.date_sold.strftime('%d %b %Y') }} at {{ '%.4f'|format(t.sale_price) if t.sale_price is not none else '—' }}</td>
+                    <td class="{% if t.realised_return_pct is not none and t.realised_return_pct >= 0 %}text-success{% elif t.realised_return_pct is not none %}text-danger{% endif %}">{{ ('%+.2f%%'|format(t.realised_return_pct)) if t.realised_return_pct is not none else '—' }}</td>
+                    <td><form method="POST" action="/admin/holdings/{{ t.id }}/delete" onsubmit="return confirm('Permanently delete this historical entry?');"><button class="btn btn-outline-danger btn-sm">Delete error</button></form></td>
+                </tr>{% endfor %}</tbody>
+            </table></div>
+            {% else %}<p class="text-muted mb-0">No sold holdings yet.</p>{% endif %}
         </div>
     </div>
 

@@ -257,6 +257,39 @@ def calculate_return_since_purchase(latest_price, buy_price):
         return None
 
 
+def get_rolling_portfolio(organization_id, create=False):
+    """Return the permanent portfolio container used by managed holdings."""
+    portfolio = Portfolio.query.filter_by(
+        organization_id=organization_id,
+        month="rolling",
+    ).first()
+    if not portfolio and create:
+        portfolio = Portfolio(
+            organization_id=organization_id,
+            month="rolling",
+            start_date=datetime.utcnow().date(),
+        )
+        db.session.add(portfolio)
+        db.session.flush()
+    return portfolio
+
+
+def active_holdings_query(organization_id):
+    return (
+        PortfolioTicker.query
+        .join(Portfolio, PortfolioTicker.portfolio_id == Portfolio.id)
+        .filter(
+            Portfolio.organization_id == organization_id,
+            PortfolioTicker.date_sold.is_(None),
+        )
+    )
+
+
+def clear_portfolio_caches():
+    cache.delete_memoized(get_dashboard_data)
+    cache.delete_memoized(get_live_prices)
+
+
 # ----------------------------
 # Send Emails When TP/SL hit
 # ----------------------------
@@ -502,14 +535,21 @@ def get_dashboard_data(current_month, organization_id):
     display_end = min(today, month_end)
     all_days = pd.date_range(start=month_start, end=month_end, freq="D")
 
-    portfolio = Portfolio.query.filter_by(
-        organization_id=organization_id,
-        month=current_month
-    ).first()
+    active_rows = active_holdings_query(organization_id).order_by(
+        PortfolioTicker.date_bought.asc(),
+        PortfolioTicker.ticker.asc(),
+    ).all()
+    # A legacy monthly upload may have left the same unsold ticker in more
+    # than one month. Use its newest purchase record until an admin removes
+    # the duplicate from the management screen.
+    db_tickers_by_symbol = {}
+    for holding in active_rows:
+        db_tickers_by_symbol[holding.ticker] = holding
+    db_tickers = list(db_tickers_by_symbol.values())
 
-    if not portfolio:
+    if not db_tickers:
         return {
-            "message": f"No portfolio uploaded for {month_start.strftime('%B %Y')} yet.",
+            "message": "No active holdings. Add the first holding from the Admin Panel.",
             "chart_html": None,
             "tickers": [],
             "portfolio_pct": None,
@@ -518,12 +558,11 @@ def get_dashboard_data(current_month, organization_id):
             "bottom_contrib": []
         }
 
-    db_tickers = PortfolioTicker.query.filter_by(portfolio_id=portfolio.id).all()
     tickers = [t.ticker for t in db_tickers]
 
     if not tickers:
         return {
-            "message": "Portfolio uploaded but contains no tickers.",
+            "message": "The rolling portfolio contains no active holdings.",
             "chart_html": None,
             "tickers": [],
             "portfolio_pct": None,
@@ -967,17 +1006,8 @@ def tickers_refresh():
     today = pd.Timestamp.today().normalize()
     current_month = today.strftime("%Y-%m")
 
-    portfolio = Portfolio.query.filter_by(
-        organization_id=organization_id,
-        month=current_month
-    ).first()
-
-
-    if not portfolio:
-        return ""
-
-    ticker_records = PortfolioTicker.query.filter_by(
-        portfolio_id=portfolio.id
+    ticker_records = active_holdings_query(organization_id).order_by(
+        PortfolioTicker.ticker.asc()
     ).all()
 
     if not ticker_records:
@@ -1035,20 +1065,20 @@ def admin():
     user = current_user()
     organization_id = user.organization_id
 
-    today = pd.Timestamp.today().normalize()
-    current_month = today.strftime("%Y-%m")
-
-    portfolio = Portfolio.query.filter_by(
-        organization_id=organization_id,
-        month=current_month
-    ).first()
-
-    tickers = []
-
-    if portfolio:
-        tickers = PortfolioTicker.query.filter_by(
-            portfolio_id=portfolio.id
-        ).all()
+    tickers = active_holdings_query(organization_id).order_by(
+        PortfolioTicker.date_bought.asc(),
+        PortfolioTicker.ticker.asc(),
+    ).all()
+    sold_tickers = (
+        PortfolioTicker.query
+        .join(Portfolio, PortfolioTicker.portfolio_id == Portfolio.id)
+        .filter(
+            Portfolio.organization_id == organization_id,
+            PortfolioTicker.date_sold.is_not(None),
+        )
+        .order_by(PortfolioTicker.date_sold.desc())
+        .all()
+    )
 
     emails = AlertEmail.query.filter_by(
         organization_id=organization_id
@@ -1074,11 +1104,165 @@ def admin():
     return render_template(
         "admin.html",
         tickers=tickers,
+        sold_tickers=sold_tickers,
         emails=emails,
         settings=settings,
         users=users,
         existing_admin=existing_admin
     )
+
+
+def parse_positive_float(value, field_name, required=True):
+    if value in (None, "") and not required:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a number.")
+    if number <= 0:
+        raise ValueError(f"{field_name} must be greater than zero.")
+    return number
+
+
+def parse_form_date(value, field_name):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        raise ValueError(f"Enter a valid {field_name}.")
+
+
+@app.route("/admin/holdings/add", methods=["POST"])
+def add_holding():
+    if not is_admin():
+        abort(403)
+
+    user = current_user()
+    ticker = (request.form.get("ticker") or "").strip().upper()
+    market_index = (request.form.get("market_index") or "").strip().upper()
+    company_name = (request.form.get("company_name") or "").strip() or None
+    notes = (request.form.get("notes") or "").strip() or None
+
+    if not ticker or len(ticker) > 10 or not all(c.isalnum() or c in ".-" for c in ticker):
+        flash("Enter a valid ticker symbol (maximum 10 characters).", "danger")
+        return redirect("/admin")
+
+    if active_holdings_query(user.organization_id).filter(
+        PortfolioTicker.ticker == ticker
+    ).first():
+        flash(f"{ticker} is already an active holding.", "warning")
+        return redirect("/admin")
+
+    try:
+        buy_price = parse_positive_float(request.form.get("buy_price"), "Purchase price")
+        quantity = parse_positive_float(request.form.get("quantity"), "Quantity", required=False)
+        date_bought = parse_form_date(request.form.get("date_bought"), "purchase date")
+        if date_bought > datetime.utcnow().date():
+            raise ValueError("Purchase date cannot be in the future.")
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect("/admin")
+
+    portfolio = get_rolling_portfolio(user.organization_id, create=True)
+    db.session.add(PortfolioTicker(
+        ticker=ticker,
+        company_name=company_name,
+        market_index=market_index or None,
+        buy_price=buy_price,
+        quantity=quantity,
+        date_bought=date_bought,
+        notes=notes,
+        portfolio_id=portfolio.id,
+    ))
+    db.session.commit()
+    clear_portfolio_caches()
+    flash(f"{ticker} added to the active portfolio.", "success")
+    return redirect("/admin")
+
+
+def organization_holding_or_404(holding_id, organization_id):
+    holding = (
+        PortfolioTicker.query
+        .join(Portfolio, PortfolioTicker.portfolio_id == Portfolio.id)
+        .filter(
+            PortfolioTicker.id == holding_id,
+            Portfolio.organization_id == organization_id,
+        )
+        .first()
+    )
+    if not holding:
+        abort(404)
+    return holding
+
+
+@app.route("/admin/holdings/<int:holding_id>/edit", methods=["POST"])
+def edit_holding(holding_id):
+    if not is_admin():
+        abort(403)
+    user = current_user()
+    holding = organization_holding_or_404(holding_id, user.organization_id)
+    if not holding.is_active:
+        flash("Sold holdings cannot be edited as active positions.", "warning")
+        return redirect("/admin")
+
+    try:
+        holding.buy_price = parse_positive_float(request.form.get("buy_price"), "Purchase price")
+        holding.quantity = parse_positive_float(request.form.get("quantity"), "Quantity", required=False)
+        holding.date_bought = parse_form_date(request.form.get("date_bought"), "purchase date")
+        if holding.date_bought > datetime.utcnow().date():
+            raise ValueError("Purchase date cannot be in the future.")
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect("/admin")
+
+    holding.company_name = (request.form.get("company_name") or "").strip() or None
+    holding.market_index = (request.form.get("market_index") or "").strip().upper() or None
+    holding.notes = (request.form.get("notes") or "").strip() or None
+    db.session.commit()
+    clear_portfolio_caches()
+    flash(f"{holding.ticker} updated.", "success")
+    return redirect("/admin")
+
+
+@app.route("/admin/holdings/<int:holding_id>/sell", methods=["POST"])
+def sell_holding(holding_id):
+    if not is_admin():
+        abort(403)
+    user = current_user()
+    holding = organization_holding_or_404(holding_id, user.organization_id)
+    if not holding.is_active:
+        flash(f"{holding.ticker} has already been sold.", "warning")
+        return redirect("/admin")
+    try:
+        sale_price = parse_positive_float(request.form.get("sale_price"), "Sale price")
+        sale_date = parse_form_date(request.form.get("date_sold"), "sale date")
+        if sale_date < holding.date_bought:
+            raise ValueError("Sale date cannot be before the purchase date.")
+        if sale_date > datetime.utcnow().date():
+            raise ValueError("Sale date cannot be in the future.")
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect("/admin")
+
+    holding.sale_price = sale_price
+    holding.date_sold = sale_date
+    db.session.commit()
+    clear_portfolio_caches()
+    flash(f"{holding.ticker} marked as sold and retained in history.", "success")
+    return redirect("/admin")
+
+
+@app.route("/admin/holdings/<int:holding_id>/delete", methods=["POST"])
+def delete_holding(holding_id):
+    if not is_admin():
+        abort(403)
+    user = current_user()
+    holding = organization_holding_or_404(holding_id, user.organization_id)
+    ticker = holding.ticker
+    db.session.delete(holding)
+    db.session.commit()
+    clear_portfolio_caches()
+    flash(f"Erroneous {ticker} entry permanently deleted.", "success")
+    return redirect("/admin")
     
     
 @app.route("/admin/upload", methods=["POST"])
