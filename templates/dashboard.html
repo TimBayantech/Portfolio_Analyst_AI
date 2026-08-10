@@ -313,42 +313,65 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ---------- Mock AI Portfolio Summary ----------
+    // ---------- AI Portfolio Summary ----------
     const generateAiSummaryBtn = document.getElementById('generateAiSummaryBtn');
     const aiSummaryOutput = document.getElementById('ai-summary-output');
 
     if (generateAiSummaryBtn && aiSummaryOutput) {
-        generateAiSummaryBtn.addEventListener('click', () => {
+        const escapeHtml = (value) => {
+            const element = document.createElement('div');
+            element.textContent = value ?? '';
+            return element.innerHTML;
+        };
+
+        const renderList = (items) => {
+            if (!Array.isArray(items) || items.length === 0) {
+                return '<p class="text-muted mb-2">None identified from the available data.</p>';
+            }
+            return `<ul class="mb-3">${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+        };
+
+        generateAiSummaryBtn.addEventListener('click', async () => {
+            generateAiSummaryBtn.disabled = true;
+            generateAiSummaryBtn.textContent = 'Generating…';
             aiSummaryOutput.innerHTML = `
-                <h6 class="mb-2">Draft AI Portfolio Summary</h6>
+                <div class="d-flex align-items-center gap-2 text-muted">
+                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                    <span>Reviewing the current portfolio snapshot…</span>
+                </div>`;
 
-                <p><strong>Portfolio overview:</strong>
-                The portfolio dashboard shows the current month-to-date movement, active holdings and latest review position.
-                This summary is a draft management-information view based on currently available dashboard data.</p>
+            try {
+                const response = await fetch('/ai-summary', {
+                    method: 'POST',
+                    headers: {'Accept': 'application/json'}
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Unable to generate the summary.');
 
-                <p><strong>Key movements:</strong>
-                Review the top and bottom contributors for securities that have had the greatest impact on portfolio movement.
-                Particular attention should be given to holdings with material positive or negative movement from purchase price.</p>
-
-                <p><strong>Trigger events:</strong>
-                Where target-profit or stop-loss thresholds have been crossed, the relevant positions should be reviewed and the adviser or investment team should document the rationale for any next steps.</p>
-
-                <p><strong>Concentration risks:</strong>
-                Consider whether exposure is concentrated in a particular stock, market index, sector, currency or investment theme.
-                Concentration should be reviewed against the client mandate and risk profile where available.</p>
-
-                <p><strong>Suggested adviser review actions:</strong></p>
-                <ul class="mb-2">
-                    <li>Review holdings that have crossed trigger thresholds.</li>
-                    <li>Check whether current exposure remains aligned with the client mandate.</li>
-                    <li>Document the rationale for continued holding, rebalancing or further review.</li>
-                    <li>Check stale, missing or incomplete price data before relying on the summary.</li>
-                </ul>
-
-                <p class="text-muted mb-0"><strong>Data-quality warning:</strong>
-                This is placeholder AI commentary for the first Portfolio Analyst AI demo version.
-                It should be replaced by a server-side AI summary generated from structured portfolio data.</p>
-            `;
+                const summary = data.summary;
+                aiSummaryOutput.innerHTML = `
+                    <div class="d-flex justify-content-between gap-3 flex-wrap mb-3">
+                        <h6 class="mb-0">Draft AI Portfolio Summary</h6>
+                        <span class="text-muted">Generated ${escapeHtml(data.generated_at)}</span>
+                    </div>
+                    <p><strong>Portfolio overview:</strong> ${escapeHtml(summary.portfolio_overview)}</p>
+                    <p><strong>Key movements:</strong> ${escapeHtml(summary.key_movements)}</p>
+                    <p><strong>Trigger events:</strong> ${escapeHtml(summary.trigger_events)}</p>
+                    <p><strong>Concentration risks:</strong> ${escapeHtml(summary.concentration_risks)}</p>
+                    <p class="mb-2"><strong>Suggested review actions:</strong></p>
+                    ${renderList(summary.review_actions)}
+                    <p class="mb-2"><strong>Data-quality notes:</strong></p>
+                    ${renderList(summary.data_quality_notes)}
+                    <p class="text-muted mb-0">Generated from the active portfolio snapshot. Review before use.</p>`;
+            } catch (error) {
+                aiSummaryOutput.innerHTML = `
+                    <div class="alert alert-danger mb-0" role="alert">
+                        <strong>Summary unavailable.</strong> ${escapeHtml(error.message)}
+                    </div>`;
+            } finally {
+                generateAiSummaryBtn.disabled = false;
+                generateAiSummaryBtn.textContent = 'Regenerate AI Summary';
+            }
         });
     }
 

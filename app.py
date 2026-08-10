@@ -12,11 +12,13 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from sqlalchemy.exc import IntegrityError
 import threading
+import json
 from models import db, User, PortfolioTicker, PortfolioSettings, AlertEmail, Portfolio, AlertState, Organization
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from dotenv import load_dotenv
 import numpy as np
+from openai import OpenAI
 
 load_dotenv()  # reads .env into os.environ
 
@@ -288,6 +290,137 @@ def active_holdings_query(organization_id):
 def clear_portfolio_caches():
     cache.delete_memoized(get_dashboard_data)
     cache.delete_memoized(get_live_prices)
+
+
+AI_SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "portfolio_overview": {"type": "string"},
+        "key_movements": {"type": "string"},
+        "trigger_events": {"type": "string"},
+        "concentration_risks": {"type": "string"},
+        "review_actions": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "data_quality_notes": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+    "required": [
+        "portfolio_overview",
+        "key_movements",
+        "trigger_events",
+        "concentration_risks",
+        "review_actions",
+        "data_quality_notes",
+    ],
+    "additionalProperties": False,
+}
+
+
+def build_ai_portfolio_snapshot(organization_id, dashboard_data, settings):
+    """Create the organisation-scoped, non-client-identifying AI input."""
+    holdings = active_holdings_query(organization_id).order_by(
+        PortfolioTicker.ticker.asc()
+    ).all()
+    dashboard_by_ticker = {
+        item["ticker"]: item for item in dashboard_data.get("tickers", [])
+    }
+
+    holding_rows = []
+    for holding in holdings:
+        market_data = dashboard_by_ticker.get(holding.ticker, {})
+        holding_rows.append({
+            "ticker": holding.ticker,
+            "company_name": holding.company_name,
+            "market_index": holding.market_index,
+            "purchase_date": holding.date_bought.isoformat(),
+            "purchase_price": holding.buy_price,
+            "latest_price": market_data.get("price"),
+            "return_since_purchase_pct": market_data.get("return_pct"),
+            "equal_weight_pct": market_data.get("weight"),
+            "portfolio_contribution_pct": market_data.get("contribution_pct"),
+        })
+
+    target_settings = None
+    if settings:
+        target_settings = {
+            "take_profit_levels_pct": [settings.tp1, settings.tp2, settings.tp3],
+            "stop_loss_pct": settings.stop_loss,
+            "take_profit_hit": [settings.tp1_hit, settings.tp2_hit, settings.tp3_hit],
+            "stop_loss_hit": settings.sl_hit,
+        }
+
+    return {
+        "as_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "portfolio_method": "equal weighted",
+        "active_holding_count": len(holding_rows),
+        "portfolio_return_since_purchase_pct": dashboard_data.get("portfolio_pct"),
+        "holdings": holding_rows,
+        "trigger_settings": target_settings,
+        "data_scope": (
+            "Active holdings and dashboard market data only. No client mandate, "
+            "risk profile, sector classification, currency exposure or external news supplied."
+        ),
+    }
+
+
+def generate_ai_portfolio_summary(snapshot):
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured.")
+
+    client = OpenAI(api_key=api_key, timeout=30.0, max_retries=1)
+    response = client.responses.create(
+        model=os.environ.get("OPENAI_MODEL", "gpt-5-mini"),
+        store=False,
+        reasoning={"effort": "low"},
+        input=[
+            {
+                "role": "system",
+                "content": (
+                    "You produce concise portfolio oversight commentary for management "
+                    "information and authorised investment-professional review. Use only "
+                    "the supplied snapshot. Do not use outside knowledge, infer news, "
+                    "recommend a trade, predict prices, or describe the output as advice. "
+                    "State material data limitations plainly. Use neutral British English. "
+                    "Review actions must be checks or matters for human consideration, not "
+                    "buy, sell, hold or rebalance instructions."
+                ),
+            },
+            {
+                "role": "user",
+                "content": "Generate the portfolio summary from this JSON snapshot:\n"
+                           + json.dumps(snapshot, separators=(",", ":")),
+            },
+        ],
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": "portfolio_summary",
+                "strict": True,
+                "schema": AI_SUMMARY_SCHEMA,
+            }
+        },
+        # This limit includes both the model's internal reasoning tokens and
+        # the visible structured JSON. A 900-token ceiling can be exhausted
+        # before the model emits any JSON at all.
+        max_output_tokens=5000,
+    )
+
+    if response.status != "completed":
+        incomplete_details = getattr(response, "incomplete_details", None)
+        reason = getattr(incomplete_details, "reason", None) or response.status
+        raise RuntimeError(
+            f"The AI service did not return a complete summary (reason: {reason})."
+        )
+
+    if not response.output_text:
+        raise RuntimeError("The AI service returned an empty summary.")
+
+    return json.loads(response.output_text), response.model
 
 
 # ----------------------------
@@ -990,6 +1123,47 @@ def chart_refresh():
         "portfolio_pct": data["portfolio_pct"],
         "last_updated": last_updated,
         "message": data.get("message")
+    })
+
+
+@app.route("/ai-summary", methods=["POST"])
+def ai_summary():
+    user = current_user()
+    if not user:
+        return jsonify({"error": "Your session has expired. Please sign in again."}), 401
+
+    current_month = pd.Timestamp.today().normalize().strftime("%Y-%m")
+    dashboard_data = get_dashboard_data(current_month, user.organization_id)
+    if not dashboard_data.get("tickers"):
+        return jsonify({"error": "Add at least one active holding before generating a summary."}), 400
+
+    settings = PortfolioSettings.query.filter_by(
+        organization_id=user.organization_id
+    ).first()
+    snapshot = build_ai_portfolio_snapshot(
+        user.organization_id,
+        dashboard_data,
+        settings,
+    )
+
+    try:
+        summary, model = generate_ai_portfolio_summary(snapshot)
+    except RuntimeError as exc:
+        app.logger.warning("AI portfolio summary unavailable: %s", exc)
+        return jsonify({"error": str(exc)}), 503
+    except Exception:
+        app.logger.exception(
+            "AI portfolio summary generation failed for organization %s",
+            user.organization_id,
+        )
+        return jsonify({
+            "error": "The AI summary is temporarily unavailable. Please try again shortly."
+        }), 503
+
+    return jsonify({
+        "summary": summary,
+        "generated_at": datetime.now().strftime("%d %b %Y, %H:%M"),
+        "model": model,
     })
 
 

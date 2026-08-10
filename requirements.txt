@@ -5,6 +5,7 @@ Flask-SQLAlchemy
 gunicorn
 itsdangerous
 numpy
+openai>=1.0,<3
 openpyxl
 pandas
 plotly
